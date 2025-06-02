@@ -13,21 +13,12 @@ post_install() {
     echo -e "${green}     Community Game Configuration Setup     ${nc}"
     echo -e "${blue}═══════════════════════════════════════════${nc}"
     echo
-
-    # # GPU Detection and instructions
-    # echo -e "${yellow}Detected GPU:${nc}"
-    # if lspci | grep -E "AMD.*VGA|VGA.*AMD" > /dev/null; then
-    #     echo -e "${green}AMD GPU detected! For advanced control, install:${nc}"
-    #     echo -e "  sudo pacman -S corectrl"
-    # elif lspci | grep -q "NVIDIA.*VGA\|VGA.*NVIDIA"; then
-    #     echo -e "${green}NVIDIA GPU detected! For advanced control, install:${nc}"
-    #     echo -e "  sudo pacman -S gwe"
-    # else
-    #     echo -e "${yellow}No dedicated GPU detected. Skipping additional packages.${nc}"
-    # fi
-
+    
+    echo -e "${yellow}Configurando Corectrl...${nc}"
+    comm-game-setup-corectrl
     echo
-    echo -e "${yellow}Configuring MangoHud for all users...${nc}"
+
+    echo -e "${yellow}Configurando MangoHud para todos os usuários...${nc}"
     # Apply to existing users (real users only)
     getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $6}' | while read -r homeDir; do
         userMangoDir="$homeDir/.config/MangoHud"
@@ -38,11 +29,27 @@ post_install() {
         chown -R "$(stat -c '%U' "$homeDir")" "$userMangoDir"
     done
 
-    echo -e "${green}✓ MangoHud configured successfully!${nc}"
+    echo -e "${green}✓ MangoHud configurado com sucesso!${nc}"
+    echo
+    echo -e "${yellow}Dica:${nc} Seu sistema está agora configurado para gaming. Reinicie para aplicar todas as configurações."
 }
 
 post_upgrade() {
-    post_install
+    echo -e "${yellow}Atualizando configurações do Corectrl...${nc}"
+    comm-game-setup-corectrl
+    
+    echo -e "${yellow}Configurando MangoHud para todos os usuários...${nc}"
+    # Apply to existing users (real users only)
+    getent passwd | awk -F: '$3 >= 1000 && $3 < 65534 {print $6}' | while read -r homeDir; do
+        userMangoDir="$homeDir/.config/MangoHud"
+        mkdir -p "$userMangoDir"
+        if [ ! -f "$userMangoDir/MangoHud.conf" ]; then
+            cp -n /etc/skel/.config/MangoHud/MangoHud.conf "$userMangoDir/" 2>/dev/null || true
+        fi
+        chown -R "$(stat -c '%U' "$homeDir")" "$userMangoDir"
+    done
+
+    echo -e "${green}✓ MangoHud configurado com sucesso!${nc}"
 }
 
 post_remove() {
@@ -53,4 +60,20 @@ post_remove() {
             rm -rf "$userMangoDir/" 2>/dev/null || true
         fi
     done
+
+    # Remove Corectrl configurations
+    if [ -f "/etc/polkit-1/rules.d/90-corectrl.rules" ]; then
+        rm -f "/etc/polkit-1/rules.d/90-corectrl.rules"
+        echo -e "${green}✓ Arquivo de regras do Corectrl removido.${nc}"
+    fi
+    
+    # Restore original GRUB configuration if backup exists
+    if [ -f "/etc/default/grub.bak" ]; then
+        mv /etc/default/grub.bak /etc/default/grub
+        grub-mkconfig -o /boot/grub/grub.cfg
+        echo -e "${green}✓ Configuração original do GRUB restaurada.${nc}"
+    else
+        echo -e "${yellow}Aviso:${nc} Para remover o parâmetro AMD GPU do GRUB, edite manualmente /etc/default/grub"
+        echo -e "e remova 'amdgpu.ppfeaturemask=0xffffffff', depois execute: sudo grub-mkconfig -o /boot/grub/grub.cfg"
+    fi
 }
